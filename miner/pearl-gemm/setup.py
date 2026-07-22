@@ -497,6 +497,22 @@ class PearlBuildExtension(_BuildExtBase):
             self.extensions = _build_ext_modules()
         super().build_extensions()
 
+        if not SKIP_CUDA_BUILD and self.extensions:
+            for ext in self.extensions:
+                full_path = self.get_ext_fullpath(ext.name)
+                print(f"VERIFY_BUILD: expected output path = {full_path}")
+                if os.path.exists(full_path):
+                    print(f"VERIFY_BUILD: found = {full_path}")
+                else:
+                    import glob
+                    candidates = glob.glob(
+                        os.path.join(os.path.dirname(full_path), "*pearl_gemm_cuda*")
+                    )
+                    if candidates:
+                        print(f"VERIFY_BUILD: nearby candidates = {candidates}")
+                    else:
+                        print("VERIFY_BUILD: pearl_gemm_cuda output not found")
+
 
 try:
     from wheel.bdist_wheel import bdist_wheel as _BdistWheelBase

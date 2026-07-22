@@ -31,7 +31,7 @@ _MISSING_EXT_MSG = (
 def _load_cuda_extension():
     """Import pearl_gemm_cuda and raise a clear error if missing."""
     try:
-        return _importlib.import_module("pearl_gemm_cuda")
+        return _importlib.import_module("pearl_gemm.pearl_gemm_cuda")
     except ModuleNotFoundError as exc:
         raise ModuleNotFoundError(
             _MISSING_EXT_MSG.format(original=exc)
