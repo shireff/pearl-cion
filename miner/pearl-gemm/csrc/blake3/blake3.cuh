@@ -150,12 +150,12 @@ __device__ __constant__ constexpr CompressParams
         .flags = KEYED_HASH | CHUNK_START | CHUNK_END | ROOT};
 
 // BN-9: __forceinline__ ensures no call overhead on any inlining boundary.
-CUTLASS_DEVICE __forceinline__
+CUTLASS_DEVICE
 u32 add32(u32 x, u32 y) {
   return x + y;
 }
 
-CUTLASS_DEVICE __forceinline__
+CUTLASS_DEVICE
 u32 rightrotate32(u32 x, u32 n) {
   // BN-2: shf.r.wrap.b32 is a single-cycle barrel rotate on SM90.
   // Semantically identical to (x >> n) | (x << (32-n)) for n in [1,31].
