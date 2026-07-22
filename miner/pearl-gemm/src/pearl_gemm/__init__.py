@@ -16,13 +16,13 @@ import sys as _sys
 _MISSING_EXT_MSG = (
     "The compiled CUDA extension 'pearl_gemm_cuda' was not found.\n"
     "\n"
-    "The .so file must be compiled before importing this package. Fix with:\n"
+    "If you installed with `pip install -e .`, build the extension separately:\n"
     "\n"
-    "  # Option 1 — reinstall (recommended)\n"
-    "  pip install -e /path/to/pearl-gemm --no-build-isolation\n"
-    "\n"
-    "  # Option 2 — build in-place explicitly\n"
     "  cd /path/to/pearl-gemm && python setup.py build_ext --inplace\n"
+    "\n"
+    "Otherwise, reinstall normally to compile during wheel build:\n"
+    "\n"
+    "  pip install . --no-build-isolation\n"
     "\n"
     "Original error: {original}"
 )
