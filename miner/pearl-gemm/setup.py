@@ -463,67 +463,74 @@ def _build_ext_modules():
 # ---------------------------------------------------------------------------
 # Design notes:
 #
-# 1. PearlBuildExtension uses __new__ factory so torch is imported lazily
-#    (torch is absent during metadata-collection in the isolated build env).
+# 1. PearlBuildExtension inherits from BuildExtension when torch is available,
+#    otherwise falls back to setuptools.Command.  This preserves compatibility
+#    with newer setuptools versions that validate cmdclass entries as real
+#    Command subclasses at parse time (metadata collection may run without
+#    torch installed).
 #
-# 2. We do NOT override editable_wheel.  Modern setuptools editable installs
-#    produce a .pth-only wheel and skip build_ext.  The caller is responsible
-#    for running `python setup.py build_ext --inplace` after `pip install -e .`
-#    to compile pearl_gemm_cuda.so.  See README.md for the install script.
-#
-# 3. CachedWheelsCommand uses __new__ factory so wheel is imported lazily.
+# 2. CachedWheelsCommand inherits from bdist_wheel when wheel is available,
+#    otherwise falls back to setuptools.Command.
 # ---------------------------------------------------------------------------
 
 
-class PearlBuildExtension:
-    """Factory: returns a real BuildExtension subclass on first instantiation."""
+try:
+    from torch.utils.cpp_extension import BuildExtension as _BuildExtBase
+    _HAVE_BUILD_EXT = True
+except ImportError:
+    from setuptools import Command as _BuildExtBase
+    _HAVE_BUILD_EXT = False
 
-    def __new__(cls, *args, **kwargs):
-        from torch.utils.cpp_extension import BuildExtension as _Base
 
+class PearlBuildExtension(_BuildExtBase):
+    """BuildExtension that applies ninja patch and initializes submodules."""
+
+    def build_extensions(self):
+        if not _HAVE_BUILD_EXT:
+            raise RuntimeError(
+                "pearl-gemm build requires torch. "
+                "Install torch before building the CUDA extension."
+            )
         _apply_ninja_patch()
-
-        class _Impl(_Base):
-            def build_extensions(self):
-                _init_submodules()
-                if not SKIP_CUDA_BUILD:
-                    self.extensions = _build_ext_modules()
-                super().build_extensions()
-
-        return _Impl(*args, **kwargs)
+        _init_submodules()
+        if not SKIP_CUDA_BUILD:
+            self.extensions = _build_ext_modules()
+        super().build_extensions()
 
 
-class CachedWheelsCommand:
-    """Factory: returns a real bdist_wheel subclass on first instantiation."""
+try:
+    from wheel.bdist_wheel import bdist_wheel as _BdistWheelBase
+    _HAVE_WHEEL = True
+except ImportError:
+    from setuptools import Command as _BdistWheelBase
+    _HAVE_WHEEL = False
 
-    def __new__(cls, *args, **kwargs):
-        from wheel.bdist_wheel import bdist_wheel as _Base
 
-        class _Impl(_Base):
-            def run(self):
-                if FORCE_BUILD:
-                    return super().run()
-                wheel_url, wheel_filename = _get_wheel_url()
-                print("Guessing wheel URL: ", wheel_url)
-                try:
-                    urllib.request.urlretrieve(wheel_url, wheel_filename)
-                    if self.dist_dir and not os.path.exists(self.dist_dir):
-                        os.makedirs(self.dist_dir)
-                    impl_tag, abi_tag, plat_tag = self.get_tag()
-                    archive_basename = (
-                        f"{self.wheel_dist_name}-{impl_tag}-{abi_tag}-{plat_tag}"
-                    )
-                    if self.dist_dir:
-                        wheel_path = os.path.join(
-                            self.dist_dir, archive_basename + ".whl"
-                        )
-                        print("Raw wheel path", wheel_path)
-                        shutil.move(wheel_filename, wheel_path)
-                except urllib.error.HTTPError:
-                    print("Precompiled wheel not found. Building from source...")
-                    super().run()
+class CachedWheelsCommand(_BdistWheelBase):
+    """bdist_wheel that tries to download a prebuilt wheel first."""
 
-        return _Impl(*args, **kwargs)
+    def run(self):
+        if not _HAVE_WHEEL or FORCE_BUILD:
+            return super().run()
+        wheel_url, wheel_filename = _get_wheel_url()
+        print("Guessing wheel URL: ", wheel_url)
+        try:
+            urllib.request.urlretrieve(wheel_url, wheel_filename)
+            if self.dist_dir and not os.path.exists(self.dist_dir):
+                os.makedirs(self.dist_dir)
+            impl_tag, abi_tag, plat_tag = self.get_tag()
+            archive_basename = (
+                f"{self.wheel_dist_name}-{impl_tag}-{abi_tag}-{plat_tag}"
+            )
+            if self.dist_dir:
+                wheel_path = os.path.join(
+                    self.dist_dir, archive_basename + ".whl"
+                )
+                print("Raw wheel path", wheel_path)
+                shutil.move(wheel_filename, wheel_path)
+        except urllib.error.HTTPError:
+            print("Precompiled wheel not found. Building from source...")
+            super().run()
 
 
 def _get_wheel_url() -> tuple[str, str]:
