@@ -461,14 +461,17 @@ def _build_ext_modules():
 # ---------------------------------------------------------------------------
 # Custom build commands
 # ---------------------------------------------------------------------------
-# Design: setuptools does NOT validate cmdclass entries as Command subclasses
-# at metadata-collection time — it only instantiates them during the build
-# phase.  We exploit this by using __new__ factories for commands that need
-# heavy imports (torch, wheel) so those imports are deferred to build time.
+# Design notes:
 #
-# Exception: editable_wheel is special — we subclass it directly because
-# the import of setuptools.command.editable_wheel is always safe (it ships
-# with setuptools itself and has no heavy dependencies).
+# 1. PearlBuildExtension uses __new__ factory so torch is imported lazily
+#    (torch is absent during metadata-collection in the isolated build env).
+#
+# 2. We do NOT override editable_wheel.  Modern setuptools editable installs
+#    produce a .pth-only wheel and skip build_ext.  The caller is responsible
+#    for running `python setup.py build_ext --inplace` after `pip install -e .`
+#    to compile pearl_gemm_cuda.so.  See README.md for the install script.
+#
+# 3. CachedWheelsCommand uses __new__ factory so wheel is imported lazily.
 # ---------------------------------------------------------------------------
 
 
@@ -476,7 +479,6 @@ class PearlBuildExtension:
     """Factory: returns a real BuildExtension subclass on first instantiation."""
 
     def __new__(cls, *args, **kwargs):
-        # Deferred import — torch is not available at metadata-collection time
         from torch.utils.cpp_extension import BuildExtension as _Base
 
         _apply_ninja_patch()
@@ -489,51 +491,6 @@ class PearlBuildExtension:
                 super().build_extensions()
 
         return _Impl(*args, **kwargs)
-
-
-# ---------------------------------------------------------------------------
-# editable_wheel — subclassed directly (import is always safe)
-# ---------------------------------------------------------------------------
-try:
-    from setuptools.command.editable_wheel import editable_wheel as _EditableWheelBase
-except ImportError:
-    # setuptools < 64 — editable installs not supported, use a no-op stub
-    from setuptools import Command as _EditableWheelBase  # type: ignore[assignment]
-
-
-class PearlBuildEditableWheel(_EditableWheelBase):
-    """
-    Intercepts ``pip install -e .`` on setuptools >= 64.
-
-    Modern setuptools uses the build_editable hook which produces a .pth-only
-    wheel and never calls build_ext.  This subclass compiles pearl_gemm_cuda.so
-    in-place *before* the .pth file is laid down, so the extension is importable
-    from the editable source tree.
-    """
-
-    def run(self):
-        if not SKIP_CUDA_BUILD:
-            try:
-                from torch.utils.cpp_extension import BuildExtension as _BuildExt
-
-                _apply_ninja_patch()
-                _init_submodules()
-
-                self.distribution.ext_modules = _build_ext_modules()
-                self.distribution.cmdclass["build_ext"] = _BuildExt
-
-                cmd = self.distribution.get_command_obj("build_ext")
-                cmd.inplace = 1
-                cmd.ensure_finalized()
-                cmd.run()
-            except Exception as exc:
-                import traceback
-                traceback.print_exc()
-                raise RuntimeError(
-                    f"pearl-gemm: CUDA build failed during editable install.\n{exc}"
-                ) from exc
-
-        super().run()
 
 
 class CachedWheelsCommand:
@@ -604,6 +561,5 @@ setup(
     cmdclass={
         "bdist_wheel": CachedWheelsCommand,
         "build_ext": PearlBuildExtension,
-        "editable_wheel": PearlBuildEditableWheel,
     },
 )
