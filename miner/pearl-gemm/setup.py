@@ -459,16 +459,15 @@ def _build_ext_modules():
 
 
 # ---------------------------------------------------------------------------
-# Custom build command — defers all heavy work until pip actually builds
+# Custom build commands — defer all heavy work until pip actually builds
 # ---------------------------------------------------------------------------
 
 
 class PearlBuildExtension:
     """
-    Wrapper factory: returns the real BuildExtension subclass only when
-    instantiated (i.e. at actual build time, not at metadata-collection time).
-    We use __new__ so setuptools receives a proper BuildExtension subclass
-    instance while we still defer the import of torch.utils.cpp_extension.
+    Wrapper factory: returns a real BuildExtension subclass on instantiation.
+    Using __new__ defers the import of torch.utils.cpp_extension to build time,
+    not metadata-collection time.
     """
 
     def __new__(cls, *args, **kwargs):
@@ -478,14 +477,36 @@ class PearlBuildExtension:
 
         class _PearlBuildExtension(BuildExtension):
             def build_extensions(self):
-                # Initialize submodules and build ext_modules list here,
-                # at the latest possible moment.
                 _init_submodules()
                 if not SKIP_CUDA_BUILD:
                     self.extensions = _build_ext_modules()
                 super().build_extensions()
 
         return _PearlBuildExtension(*args, **kwargs)
+
+
+class PearlBuildEditableWheel:
+    """
+    Intercepts `pip install -e .` on modern setuptools (>=64) which uses the
+    build_editable hook instead of build_ext.  Without this override, setuptools
+    creates a .pth-only editable wheel and never compiles the CUDA extension.
+
+    Strategy: run build_ext --inplace first, then delegate to the default
+    editable wheel builder so that sys.path pointing at src/ still works.
+    """
+
+    def __new__(cls, *args, **kwargs):
+        from setuptools.command.editable_wheel import editable_wheel as _editable_wheel
+
+        class _PearlBuildEditableWheel(_editable_wheel):
+            def run(self):
+                # Compile the CUDA extension into src/ before the .pth is laid down
+                if not SKIP_CUDA_BUILD:
+                    self.reinitialize_command("build_ext", inplace=1)
+                    self.run_command("build_ext")
+                super().run()
+
+        return _PearlBuildEditableWheel(*args, **kwargs)
 
 
 # ---------------------------------------------------------------------------
@@ -561,5 +582,6 @@ setup(
     cmdclass={
         "bdist_wheel": CachedWheelsCommand,
         "build_ext": PearlBuildExtension,
+        "editable_wheel": PearlBuildEditableWheel,
     },
 )
