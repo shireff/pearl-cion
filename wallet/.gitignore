@@ -1,0 +1,8 @@
+oyster
+vendor
+.idea
+coverage.txt
+*.swp
+.vscode
+.DS_Store
+.aider*
