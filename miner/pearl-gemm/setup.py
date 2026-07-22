@@ -463,63 +463,90 @@ def _build_ext_modules():
 # ---------------------------------------------------------------------------
 
 
-class PearlBuildExtension:
+def _make_build_extension_class():
     """
-    Wrapper factory: returns a real BuildExtension subclass on instantiation.
-    Using __new__ defers the import of torch.utils.cpp_extension to build time,
-    not metadata-collection time.
+    Build PearlBuildExtension at call time so torch is imported lazily.
+    setuptools calls cmdclass entries only during the actual build phase,
+    never during metadata collection, so this deferred import is safe.
     """
+    from torch.utils.cpp_extension import BuildExtension as _BuildExtension
 
-    def __new__(cls, *args, **kwargs):
-        from torch.utils.cpp_extension import BuildExtension
+    _apply_ninja_patch()
 
-        _apply_ninja_patch()
+    class PearlBuildExtension(_BuildExtension):
+        def build_extensions(self):
+            _init_submodules()
+            if not SKIP_CUDA_BUILD:
+                self.extensions = _build_ext_modules()
+            super().build_extensions()
 
-        class _PearlBuildExtension(BuildExtension):
-            def build_extensions(self):
-                _init_submodules()
-                if not SKIP_CUDA_BUILD:
-                    self.extensions = _build_ext_modules()
-                super().build_extensions()
-
-        return _PearlBuildExtension(*args, **kwargs)
+    return PearlBuildExtension
 
 
-class PearlBuildEditableWheel:
+def _make_editable_wheel_class():
     """
-    Intercepts `pip install -e .` on modern setuptools (>=64).
-
-    Modern setuptools uses the build_editable hook which produces a .pth-only
-    wheel — it never calls build_ext, so pearl_gemm_cuda.so is never compiled.
-
-    Fix: inject the ext_modules into the distribution and run build_ext
-    --inplace before delegating to the standard editable wheel builder.
+    Build PearlBuildEditableWheel at call time.
+    setuptools.command.editable_wheel is always present when setuptools>=64
+    is the build backend, so importing it here is safe at module load time.
     """
+    try:
+        from setuptools.command.editable_wheel import editable_wheel as _base
+    except ImportError:
+        # Older setuptools without build_editable support — fallback no-op
+        from setuptools import Command as _base  # type: ignore[assignment]
 
-    def __new__(cls, *args, **kwargs):
-        from setuptools.command.editable_wheel import editable_wheel as _editable_wheel
+    class PearlBuildEditableWheel(_base):
+        """
+        Intercepts `pip install -e .` on modern setuptools (>=64).
 
-        class _PearlBuildEditableWheel(_editable_wheel):
-            def run(self):
-                if not SKIP_CUDA_BUILD:
+        Modern setuptools produces a .pth-only editable wheel without ever
+        calling build_ext — so pearl_gemm_cuda.so is never compiled.
+
+        Fix: populate ext_modules on the distribution and run build_ext
+        --inplace before delegating to the standard editable wheel builder.
+        """
+
+        def run(self):
+            if not SKIP_CUDA_BUILD:
+                try:
+                    from torch.utils.cpp_extension import BuildExtension as _BuildExtension
+
                     _apply_ninja_patch()
                     _init_submodules()
 
-                    # Populate ext_modules on the distribution so build_ext
-                    # knows what to compile.
-                    ext_modules = _build_ext_modules()
-                    self.distribution.ext_modules = ext_modules
+                    self.distribution.ext_modules = _build_ext_modules()
 
-                    # Build in-place so the .so lands next to the Python sources
-                    # that the .pth file will expose via sys.path.
+                    # Swap the build_ext command class so it uses our patched version
+                    self.distribution.cmdclass["build_ext"] = _BuildExtension
+
                     build_ext_cmd = self.distribution.get_command_obj("build_ext")
                     build_ext_cmd.inplace = 1
                     build_ext_cmd.ensure_finalized()
                     build_ext_cmd.run()
+                except Exception as exc:
+                    import traceback
+                    traceback.print_exc()
+                    raise RuntimeError(
+                        f"pearl-gemm: CUDA build failed during editable install.\n{exc}"
+                    ) from exc
 
-                super().run()
+            super().run()
 
-        return _PearlBuildEditableWheel(*args, **kwargs)
+    return PearlBuildEditableWheel
+
+
+# Build both classes at module-import time.
+# setuptools validates cmdclass entries at setup() call time (not build time),
+# so they must be real Command subclasses — __new__ factories won't work.
+#
+# IMPORTANT: _make_build_extension_class() imports torch — this means
+# torch must be present when setup.py is loaded. This is guaranteed because:
+#   - pip install: torch is in build-system.requires → installed before setup.py runs
+#   - python setup.py build_ext: torch must already be installed by the user
+#
+# If torch is missing, we get a clear ImportError rather than a silent failure.
+PearlBuildExtension = _make_build_extension_class()
+PearlBuildEditableWheel = _make_editable_wheel_class()
 
 
 # ---------------------------------------------------------------------------
@@ -527,37 +554,35 @@ class PearlBuildEditableWheel:
 # ---------------------------------------------------------------------------
 
 
-class CachedWheelsCommand:
-    """
-    Same lazy-wrapper pattern: real class is built on first instantiation so
-    that `from wheel.bdist_wheel import bdist_wheel` only runs at build time.
-    """
+def _make_cached_wheels_class():
+    """Build CachedWheelsCommand at call time — defers wheel import."""
+    from wheel.bdist_wheel import bdist_wheel as _bdist_wheel
 
-    def __new__(cls, *args, **kwargs):
-        from wheel.bdist_wheel import bdist_wheel as _bdist_wheel
+    class CachedWheelsCommand(_bdist_wheel):
+        def run(self):
+            if FORCE_BUILD:
+                return super().run()
 
-        class _CachedWheelsCommand(_bdist_wheel):
-            def run(self):
-                if FORCE_BUILD:
-                    return super().run()
+            wheel_url, wheel_filename = _get_wheel_url()
+            print("Guessing wheel URL: ", wheel_url)
+            try:
+                urllib.request.urlretrieve(wheel_url, wheel_filename)
+                if self.dist_dir and not os.path.exists(self.dist_dir):
+                    os.makedirs(self.dist_dir)
+                impl_tag, abi_tag, plat_tag = self.get_tag()
+                archive_basename = f"{self.wheel_dist_name}-{impl_tag}-{abi_tag}-{plat_tag}"
+                if self.dist_dir:
+                    wheel_path = os.path.join(self.dist_dir, archive_basename + ".whl")
+                    print("Raw wheel path", wheel_path)
+                    shutil.move(wheel_filename, wheel_path)
+            except urllib.error.HTTPError:
+                print("Precompiled wheel not found. Building from source...")
+                super().run()
 
-                wheel_url, wheel_filename = _get_wheel_url()
-                print("Guessing wheel URL: ", wheel_url)
-                try:
-                    urllib.request.urlretrieve(wheel_url, wheel_filename)
-                    if self.dist_dir and not os.path.exists(self.dist_dir):
-                        os.makedirs(self.dist_dir)
-                    impl_tag, abi_tag, plat_tag = self.get_tag()
-                    archive_basename = f"{self.wheel_dist_name}-{impl_tag}-{abi_tag}-{plat_tag}"
-                    if self.dist_dir:
-                        wheel_path = os.path.join(self.dist_dir, archive_basename + ".whl")
-                        print("Raw wheel path", wheel_path)
-                        shutil.move(wheel_filename, wheel_path)
-                except urllib.error.HTTPError:
-                    print("Precompiled wheel not found. Building from source...")
-                    super().run()
+    return CachedWheelsCommand
 
-        return _CachedWheelsCommand(*args, **kwargs)
+
+CachedWheelsCommand = _make_cached_wheels_class()
 
 
 def _get_wheel_url() -> tuple[str, str]:
