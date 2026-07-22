@@ -33,6 +33,12 @@ requires = [
 ]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools]
+# Force setuptools to run build_ext during `pip install -e .`
+# Without this, modern setuptools uses a .pth-only editable install
+# that skips the CUDA extension compilation entirely.
+editable-mode = "compat"
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
