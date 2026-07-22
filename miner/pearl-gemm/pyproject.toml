@@ -8,14 +8,14 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "blake3>=1.0.7",
-    "cuda-python>=13.0,<13.1",
+    "cuda-python>=12.0",
     "nvidia-cutlass-dsl>=4.4",
     "pearl-gemm-build-utils",
     "numpy>=1.24.0",
     "packaging>=21.0",
     "pydantic>=2.12.0,<3.0.0",
     "sortedcontainers>=2.4.0",
-    "torch==2.11.0",
+    "torch>=2.11.0",
     "wheel>=0.38.0",
 ]
 
@@ -23,7 +23,7 @@ dependencies = [
 [build-system]
 requires = [
     "setuptools>=61",
-    "torch==2.11.0",
+    "torch>=2.11.0",
     "numpy>=1.24.0",
     "ninja>=1.11",
     "packaging>=21.0",

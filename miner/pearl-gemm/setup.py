@@ -487,12 +487,13 @@ class PearlBuildExtension:
 
 class PearlBuildEditableWheel:
     """
-    Intercepts `pip install -e .` on modern setuptools (>=64) which uses the
-    build_editable hook instead of build_ext.  Without this override, setuptools
-    creates a .pth-only editable wheel and never compiles the CUDA extension.
+    Intercepts `pip install -e .` on modern setuptools (>=64).
 
-    Strategy: run build_ext --inplace first, then delegate to the default
-    editable wheel builder so that sys.path pointing at src/ still works.
+    Modern setuptools uses the build_editable hook which produces a .pth-only
+    wheel — it never calls build_ext, so pearl_gemm_cuda.so is never compiled.
+
+    Fix: inject the ext_modules into the distribution and run build_ext
+    --inplace before delegating to the standard editable wheel builder.
     """
 
     def __new__(cls, *args, **kwargs):
@@ -500,10 +501,22 @@ class PearlBuildEditableWheel:
 
         class _PearlBuildEditableWheel(_editable_wheel):
             def run(self):
-                # Compile the CUDA extension into src/ before the .pth is laid down
                 if not SKIP_CUDA_BUILD:
-                    self.reinitialize_command("build_ext", inplace=1)
-                    self.run_command("build_ext")
+                    _apply_ninja_patch()
+                    _init_submodules()
+
+                    # Populate ext_modules on the distribution so build_ext
+                    # knows what to compile.
+                    ext_modules = _build_ext_modules()
+                    self.distribution.ext_modules = ext_modules
+
+                    # Build in-place so the .so lands next to the Python sources
+                    # that the .pth file will expose via sys.path.
+                    build_ext_cmd = self.distribution.get_command_obj("build_ext")
+                    build_ext_cmd.inplace = 1
+                    build_ext_cmd.ensure_finalized()
+                    build_ext_cmd.run()
+
                 super().run()
 
         return _PearlBuildEditableWheel(*args, **kwargs)
