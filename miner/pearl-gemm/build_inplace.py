@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build pearl_gemm_cuda in-place."""
+"""Build pearl_gemm_cuda in-place without relying on setup.py cmdclass."""
 
 from __future__ import annotations
 
@@ -29,14 +29,14 @@ if not extensions:
     print("No extensions to build.")
     sys.exit(0)
 
-from setuptools import setup
+from setuptools.dist import Distribution
+from torch.utils.cpp_extension import BuildExtension
 
-setup(
-    name="pearl_gemm_build_inplace",
-    ext_modules=extensions,
-    cmdclass={"build_ext": _setup.PearlBuildExtension},
-    script_args=["build_ext", "--inplace"],
-)
+dist = Distribution({"ext_modules": extensions})
+cmd = BuildExtension(dist)
+cmd.inplace = 1
+cmd.ensure_finalized()
+cmd.run()
 
 print("BUILD COMPLETE")
 for ext in extensions:
