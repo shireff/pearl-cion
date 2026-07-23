@@ -288,13 +288,18 @@ def _apply_ninja_patch() -> None:
 
 def _init_submodules() -> None:
     cutlass_dir = ROOT_DIR / "third_party" / "cutlass"
-    if cutlass_dir.exists():
+    marker = cutlass_dir / "include" / "cute" / "layout.hpp"
+    if cutlass_dir.exists() and marker.exists():
         print(f"cutlass_dir already exists at {cutlass_dir}")
         return
 
     url = "https://github.com/NVIDIA/cutlass/archive/refs/heads/main.zip"
     zip_path = ROOT_DIR / "cutlass.zip"
     extract_dir = ROOT_DIR / "third_party"
+
+    if cutlass_dir.exists():
+        import shutil
+        shutil.rmtree(cutlass_dir)
 
     print(f"Downloading CUTLASS from {url}")
     import urllib.request
@@ -321,8 +326,8 @@ def _init_submodules() -> None:
         if zip_path.exists():
             zip_path.unlink()
 
-    if not cutlass_dir.exists():
-        raise RuntimeError(f"cutlass_dir {cutlass_dir} does not exist after download")
+    if not marker.exists():
+        raise RuntimeError(f"CUTLASS include/cute/layout.hpp missing at {marker}")
 
 
 def _get_platform() -> str:
