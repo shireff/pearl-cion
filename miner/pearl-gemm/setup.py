@@ -486,7 +486,11 @@ class PearlBuildExtension(_BuildExtBase):
     """BuildExtension that applies ninja patch and initializes submodules."""
 
     def build_extensions(self):
-        print("DEBUG: PearlBuildExtension.build_extensions() called")
+        import os as _os
+        marker = _os.path.join(ROOT_DIR, ".pearl_build_ext_marker")
+        with open(marker, "w", encoding="utf-8") as _mf:
+            _mf.write("build_extensions_called\n")
+        print("DEBUG: PearlBuildExtension.build_extensions() called", flush=True)
         if not _HAVE_BUILD_EXT:
             raise RuntimeError(
                 "pearl-gemm build requires torch. "
@@ -496,11 +500,11 @@ class PearlBuildExtension(_BuildExtBase):
         _init_submodules()
         if not SKIP_CUDA_BUILD:
             self.extensions = _build_ext_modules()
-        print(f"DEBUG: extensions count = {len(self.extensions or [])}")
+        print(f"DEBUG: extensions count = {len(self.extensions or [])}", flush=True)
         for ext in (self.extensions or []):
-            print(f"DEBUG: extension name = {ext.name}")
+            print(f"DEBUG: extension name = {ext.name}", flush=True)
         super().build_extensions()
-        print("DEBUG: super().build_extensions() returned")
+        print("DEBUG: super().build_extensions() returned", flush=True)
 
         if not SKIP_CUDA_BUILD:
             for ext in (self.extensions or []):
