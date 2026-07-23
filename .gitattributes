@@ -1,0 +1,4 @@
+*.cu binary
+*.cuh binary
+*.cpp binary
+*.h binary
