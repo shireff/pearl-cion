@@ -602,9 +602,10 @@ def _get_wheel_url() -> tuple[str, str]:
 # Entry point
 # ---------------------------------------------------------------------------
 
-setup(
-    cmdclass={
-        "bdist_wheel": CachedWheelsCommand,
-        "build_ext": PearlBuildExtension,
-    },
-)
+if __name__ == "__main__":
+    setup(
+        cmdclass={
+            "bdist_wheel": CachedWheelsCommand,
+            "build_ext": PearlBuildExtension,
+        },
+    )

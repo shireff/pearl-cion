@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build pearl_gemm_cuda in-place, bypassing setup.py cmdclass."""
+"""Build pearl_gemm_cuda in-place."""
 
 from __future__ import annotations
 
@@ -15,7 +15,6 @@ if SRC_DIR not in sys.path:
 os.chdir(ROOT_DIR)
 
 import setup as _setup
-
 
 _setup._apply_ninja_patch()
 _setup._init_submodules()
