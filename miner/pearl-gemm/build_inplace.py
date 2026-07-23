@@ -14,6 +14,11 @@ if SRC_DIR not in sys.path:
 
 os.chdir(ROOT_DIR)
 
+_cuda_home = os.environ.get("CUDA_HOME", "/usr/local/cuda")
+if os.path.isdir(_cuda_home) and _cuda_home not in os.environ.get("PATH", ""):
+    os.environ["PATH"] = _cuda_home + os.pathsep + os.environ.get("PATH", "")
+os.environ.setdefault("CUDA_HOME", _cuda_home)
+
 import setup as _setup
 
 _setup._apply_ninja_patch()
