@@ -24,13 +24,13 @@ if not extensions:
     print("No extensions to build.")
     sys.exit(0)
 
-from torch.utils.cpp_extension import BuildExtension
+from setuptools import setup
 
-cmd = BuildExtension()
-cmd.extensions = extensions
-cmd.inplace = 1
-cmd.ensure_finalized()
-cmd.run()
+setup(
+    name="pearl_gemm_build_inplace",
+    ext_modules=extensions,
+    script_args=["build_ext", "--inplace"],
+)
 
 print("BUILD COMPLETE")
 for ext in extensions:
