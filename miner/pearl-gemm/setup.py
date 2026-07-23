@@ -288,17 +288,41 @@ def _apply_ninja_patch() -> None:
 
 def _init_submodules() -> None:
     cutlass_dir = ROOT_DIR / "third_party" / "cutlass"
+    if cutlass_dir.exists():
+        print(f"cutlass_dir already exists at {cutlass_dir}")
+        return
+
+    url = "https://github.com/NVIDIA/cutlass/archive/refs/heads/main.zip"
+    zip_path = ROOT_DIR / "cutlass.zip"
+    extract_dir = ROOT_DIR / "third_party"
+
+    print(f"Downloading CUTLASS from {url}")
+    import urllib.request
+
     try:
-        subprocess.run(
-            ["git", "submodule", "update", "--init", str(cutlass_dir)],
-            check=True,
-        )
-    except (subprocess.CalledProcessError, FileNotFoundError) as e:
-        print(f"Warning: Could not initialize git submodules: {e}")
-        print("This may be expected in containerized environments where git is unavailable.")
+        with urllib.request.urlopen(url, timeout=120) as resp, open(zip_path, "wb") as out:
+            out.write(resp.read())
+    except Exception as exc:
+        raise RuntimeError(f"Failed to download CUTLASS: {exc}") from exc
+
+    print(f"Extracting {zip_path} ...")
+    import zipfile
+
+    try:
+        with zipfile.ZipFile(zip_path, "r") as zf:
+            top = zf.namelist()[0].split("/")[0]
+            zf.extractall(extract_dir)
+            extracted = extract_dir / top
+            if extracted.exists() and not cutlass_dir.exists():
+                extracted.rename(cutlass_dir)
+    except Exception as exc:
+        raise RuntimeError(f"Failed to extract CUTLASS: {exc}") from exc
+    finally:
+        if zip_path.exists():
+            zip_path.unlink()
 
     if not cutlass_dir.exists():
-        raise RuntimeError(f"cutlass_dir {cutlass_dir} does not exist after submodule init")
+        raise RuntimeError(f"cutlass_dir {cutlass_dir} does not exist after download")
 
 
 def _get_platform() -> str:
