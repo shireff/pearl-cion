@@ -34,6 +34,7 @@ from setuptools import setup
 setup(
     name="pearl_gemm_build_inplace",
     ext_modules=extensions,
+    cmdclass={"build_ext": _setup.PearlBuildExtension},
     script_args=["build_ext", "--inplace"],
 )
 
