@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import importlib as _importlib
 import sys as _sys
+from pathlib import Path
 
 _MISSING_EXT_MSG = (
     "The compiled CUDA extension 'pearl_gemm_cuda' was not found.\n"
@@ -28,14 +29,55 @@ _MISSING_EXT_MSG = (
 )
 
 
+def _find_cuda_extension():
+    """Locate and import pearl_gemm_cuda, searching common locations."""
+    import glob as _glob
+
+    candidates = [
+        "pearl_gemm.pearl_gemm_cuda",
+        "pearl_gemm_cuda",
+    ]
+    for name in candidates:
+        try:
+            return _importlib.import_module(name)
+        except ModuleNotFoundError:
+            pass
+
+    root = Path(__file__).resolve().parent
+    search_roots = [
+        root,
+        root.parent,
+        root / "csrc",
+        ROOT_DIR if "ROOT_DIR" in globals() else root.parent.parent,
+    ]
+    patterns = [
+        "pearl_gemm_cuda*.so",
+        "pearl_gemm_cuda*.pyd",
+    ]
+    for search_root in search_roots:
+        for pattern in patterns:
+            matches = _glob.glob(str(search_root / "**" / pattern), recursive=True)
+            if matches:
+                for match in matches:
+                    match_dir = Path(match).parent
+                    if str(match_dir) not in _sys.path:
+                        _sys.path.insert(0, str(match_dir))
+                try:
+                    return _importlib.import_module("pearl_gemm_cuda")
+                except ModuleNotFoundError:
+                    pass
+
+    return None
+
+
 def _load_cuda_extension():
     """Import pearl_gemm_cuda and raise a clear error if missing."""
-    try:
-        return _importlib.import_module("pearl_gemm.pearl_gemm_cuda")
-    except ModuleNotFoundError as exc:
-        raise ModuleNotFoundError(
-            _MISSING_EXT_MSG.format(original=exc)
-        ) from exc
+    cuda_ext = _find_cuda_extension()
+    if cuda_ext is not None:
+        return cuda_ext
+    raise ModuleNotFoundError(
+        _MISSING_EXT_MSG.format(original="No module named 'pearl_gemm_cuda'")
+    )
 
 
 # Fail fast and clearly if the .so is missing — before any sub-module import

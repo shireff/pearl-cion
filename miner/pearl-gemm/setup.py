@@ -497,21 +497,34 @@ class PearlBuildExtension(_BuildExtBase):
             self.extensions = _build_ext_modules()
         super().build_extensions()
 
-        if not SKIP_CUDA_BUILD and self.extensions:
-            for ext in self.extensions:
+        if not SKIP_CUDA_BUILD:
+            for ext in (self.extensions or []):
                 full_path = self.get_ext_fullpath(ext.name)
                 print(f"VERIFY_BUILD: expected output path = {full_path}")
                 if os.path.exists(full_path):
                     print(f"VERIFY_BUILD: found = {full_path}")
-                else:
-                    import glob
-                    candidates = glob.glob(
-                        os.path.join(os.path.dirname(full_path), "*pearl_gemm_cuda*")
+                    continue
+                import glob as _glob
+                search_roots = [
+                    os.path.dirname(full_path),
+                    self.build_lib or "",
+                    self.build_temp or "",
+                    str(ROOT_DIR / "src" / "pearl_gemm"),
+                    str(ROOT_DIR / "miner" / "pearl-gemm" / "src" / "pearl_gemm"),
+                ]
+                found_any = False
+                for search_root in search_roots:
+                    if not search_root:
+                        continue
+                    candidates = _glob.glob(
+                        os.path.join(search_root, "**", "*pearl_gemm_cuda*"), recursive=True
                     )
                     if candidates:
-                        print(f"VERIFY_BUILD: nearby candidates = {candidates}")
-                    else:
-                        print("VERIFY_BUILD: pearl_gemm_cuda output not found")
+                        print(f"VERIFY_BUILD: nearby candidates in {search_root} = {candidates}")
+                        found_any = True
+                        break
+                if not found_any:
+                    print("VERIFY_BUILD: pearl_gemm_cuda output not found")
 
 
 try:
