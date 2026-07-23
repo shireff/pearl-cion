@@ -19,7 +19,7 @@ static constexpr int HASH_ACCUMULATE_ROTATION = 13;
 // LUT 0x96 = 0b10010110  =>  d = a ^ b ^ c
 // PROTOCOL SAFE: bit-for-bit identical result.
 // ---------------------------------------------------------------------------
-CUTE_DEVICE __forceinline__
+CUTE_DEVICE
 uint32_t xor3_lop3(uint32_t a, uint32_t b, uint32_t c) {
   uint32_t d;
   asm("lop3.b32 %0, %1, %2, %3, 0x96;" : "=r"(d) : "r"(a), "r"(b), "r"(c));
@@ -31,7 +31,7 @@ uint32_t xor3_lop3(uint32_t a, uint32_t b, uint32_t c) {
 // PROTOCOL SAFE: semantically identical to ((x << shift) | (x >> (32-shift))) ^ y.
 // ---------------------------------------------------------------------------
 template <int shift>
-CUTE_DEVICE __forceinline__
+CUTE_DEVICE
 uint32_t rotl_xor(uint32_t x, uint32_t y) {
   static_assert(shift > 0 && shift < 32, "Shift must be in range (0, 32)");
   uint32_t rotated;
@@ -43,7 +43,7 @@ uint32_t rotl_xor(uint32_t x, uint32_t y) {
 // XOR tree reduction — unchanged algorithm, __forceinline__ added (BN-9).
 // ---------------------------------------------------------------------------
 template <class OutputLayerSize, class InputLayer>
-CUTE_DEVICE __forceinline__
+CUTE_DEVICE
 auto process_xor_layer(InputLayer const& input_layer) {
   constexpr size_t input_size        = InputLayer{}.size();
   constexpr size_t output_layer_size = OutputLayerSize{}.value;
@@ -81,7 +81,7 @@ constexpr auto xor_tree_layer_sizes() {
 }
 
 template <typename TensorType>
-CUTE_DEVICE __forceinline__
+CUTE_DEVICE
 uint32_t xor_reduction(const TensorType& input_tensor) {
   constexpr size_t buffer_size =
       decltype(std::declval<TensorType>().size())::value;
@@ -171,7 +171,7 @@ struct TileHashAccumulator {
         m_debug_counter(debug_counter) {}
 
   template <typename TranscriptTensor>
-  CUTLASS_DEVICE __forceinline__
+  CUTLASS_DEVICE
   void preload(TranscriptTensor const& transcript) {
     CUTLASS_PRAGMA_UNROLL
     for (int i = 0; i < accums_per_tile; ++i) {
@@ -187,7 +187,7 @@ struct TileHashAccumulator {
   // CORRECTNESS: fires at call-index ReduceEveryK, 2×ReduceEveryK, …, exactly
   // as the original modulo version did.
   // -------------------------------------------------------------------------
-  CUTLASS_DEVICE __forceinline__
+  CUTLASS_DEVICE
   bool needs_accumulate(int /*k_block*/) {
     ++m_k_block_count;
     // BN-4: decrement down-counter; if it reaches 0, reset and return true
@@ -199,7 +199,7 @@ struct TileHashAccumulator {
   }
 
   template <typename TensorType>
-  CUTLASS_DEVICE __forceinline__
+  CUTLASS_DEVICE
   void accumulate_now(TensorType& tensor, int k_block) {
     warpgroup_wait<0>();
     warpgroup_fence_operand(tensor);
@@ -216,7 +216,7 @@ struct TileHashAccumulator {
 
   // Legacy combined interface — kept for backward compatibility.
   template <typename TensorType>
-  CUTLASS_DEVICE __forceinline__
+  CUTLASS_DEVICE
   void accumulate(TensorType& tensor, int k_block) {
     if (needs_accumulate(k_block)) {
       accumulate_now(tensor, k_block);
@@ -230,7 +230,7 @@ struct TileHashAccumulator {
   // (always non-negative) x % 16 == x & 15.
   // -------------------------------------------------------------------------
   template <typename TranscriptTensor>
-  CUTLASS_DEVICE __forceinline__
+  CUTLASS_DEVICE
   void writeback(TranscriptTensor& transcript) {
     CUTLASS_PRAGMA_UNROLL
     for (int i = 0; i < accums_per_tile; ++i) {
@@ -261,7 +261,7 @@ struct TileHashAccumulator {
 //   The uint4 layout on SM90 maps: x=word[0], y=word[1], z=word[2], w=word[3].
 // ---------------------------------------------------------------------------
 template <typename TranscriptTensor>
-CUTLASS_DEVICE __forceinline__
+CUTLASS_DEVICE
 bool check_pow_target(const TranscriptTensor& transcript,
                       const uint32_t*         pow_target,
                       const uint32_t*         pow_key) {

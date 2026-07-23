@@ -289,7 +289,7 @@ def _apply_ninja_patch() -> None:
 def _init_submodules() -> None:
     cutlass_dir = ROOT_DIR / "third_party" / "cutlass"
     marker = cutlass_dir / "include" / "cute" / "layout.hpp"
-    if cutlass_dir.exists() and marker.exists():
+    if marker.exists():
         print(f"cutlass_dir already exists at {cutlass_dir}")
         return
 
@@ -297,7 +297,7 @@ def _init_submodules() -> None:
     zip_path = ROOT_DIR / "cutlass.zip"
     extract_dir = ROOT_DIR / "third_party"
 
-    if cutlass_dir.exists():
+    if cutlass_dir.is_dir():
         import shutil
         shutil.rmtree(cutlass_dir)
 
