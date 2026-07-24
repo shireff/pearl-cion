@@ -52,7 +52,7 @@ echo "nvcc version: $NVCC_VERSION"
 
 echo "=== Step 4/8: Downloading Pearl repository ==="
 cd /content
-rm -rf pearl.zip pearl
+rm -rf pearl.zip pearl /content/pearl
 
 download_ok=0
 for attempt in 1 2 3; do
@@ -81,9 +81,9 @@ if ! file pearl.zip | grep -q 'Zip archive data'; then
     exit 1
 fi
 
-unzip -q pearl.zip
-if [ ! -d "pearl-main" ]; then
-    echo "ERROR: Expected directory 'pearl-main' not found after unzip."
+unzip -q -o pearl.zip
+if [ ! -d "pearl-cion-main" ]; then
+    echo "ERROR: Expected directory 'pearl-cion-main' not found after unzip."
     ls -la
     exit 1
 fi
