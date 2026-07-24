@@ -70,9 +70,11 @@ void run_build_routing_data(const int32_t* topk_ids, int32_t* routing_data,
 
   // Step 4: convert flat slot indices to token indices.
   const int32_t top_k_value = top_k;
-  cub::DeviceTransform::Transform(
-      slot_indices, routing_data, numel,
-      [top_k_value] __device__(int32_t slot) { return slot / top_k_value; },
+  cub::DeviceFor::Bulk(
+      numel,
+      [slot_indices, routing_data, top_k_value] __device__(int32_t idx) {
+        routing_data[idx] = slot_indices[idx] / top_k_value;
+      },
       stream);
 }
 

@@ -62,7 +62,7 @@ auto process_xor_layer(InputLayer const& input_layer) {
                            input_layer[3 * i + 2]);
   }
   CUTLASS_PRAGMA_UNROLL
-  for (size_t i = 0; i < remainder; ++i) {
+  for (int i = 0; i < static_cast<int>(remainder); ++i) {
     result[triplets + i] = input_layer[triplets * 3 + i];
   }
 
