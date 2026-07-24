@@ -102,16 +102,41 @@ uv sync --package pearl-gemm-build-utils --package pearl-gemm --package vllm-min
 echo "=== Step 7/8: Building pearl-gemm CUDA extension ==="
 cd /content/pearl/miner/pearl-gemm
 export MAX_JOBS=2
+export TORCH_EXTENSION_SKIP_CUDA_VERSION_CHECK=1
 
 echo "Checking torch CUDA version compatibility..."
 TORCH_CUDA_VERSION=$(uv run python -c "import torch; print(torch.version.cuda)" 2>/dev/null || echo "unknown")
 echo "torch CUDA version: $TORCH_CUDA_VERSION"
 if [ "$TORCH_CUDA_VERSION" != "$NVCC_VERSION" ] && [ "$TORCH_CUDA_VERSION" != "unknown" ]; then
     echo "WARNING: nvcc version ($NVCC_VERSION) does not match torch CUDA version ($TORCH_CUDA_VERSION)."
-    echo "Build may fail. Consider using a runtime with matching CUDA toolkit."
+    echo "Skipping CUDA version check and attempting build anyway..."
 fi
 
-python build_inplace.py
+echo "Checking CUTLASS availability..."
+if [ -f "third_party/cutlass/include/cute/layout.hpp" ]; then
+    echo "CUTLASS already available locally, skipping download."
+else
+    echo "CUTLASS not found locally, downloading..."
+    python -c "
+import urllib.request, zipfile, pathlib
+url = 'https://github.com/NVIDIA/cutlass/archive/refs/heads/main.zip'
+path = pathlib.Path('cutlass.zip')
+print('Downloading CUTLASS...')
+with urllib.request.urlopen(url, timeout=120) as resp, open(path, 'wb') as out:
+    out.write(resp.read())
+print('Extracting...')
+with zipfile.ZipFile(path, 'r') as zf:
+    top = zf.namelist()[0].split('/')[0]
+    zf.extractall('third_party')
+    extracted = pathlib.Path('third_party') / top
+    if extracted.exists() and not pathlib.Path('third_party/cutlass').exists():
+        extracted.rename(pathlib.Path('third_party/cutlass'))
+path.unlink(missing_ok=True)
+print('CUTLASS ready at third_party/cutlass')
+"
+fi
+
+uv run python build_inplace.py
 
 echo "=== Step 8/8: Running tests ==="
 cd /content/pearl
