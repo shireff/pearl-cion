@@ -53,8 +53,41 @@ echo "nvcc version: $NVCC_VERSION"
 echo "=== Step 4/8: Downloading Pearl repository ==="
 cd /content
 rm -rf pearl.zip pearl
-curl -sL https://github.com/pearl-research-labs/pearl/archive/refs/heads/main.zip -o pearl.zip
+
+download_ok=0
+for attempt in 1 2 3; do
+    echo "Download attempt $attempt/3..."
+    curl -sL --retry 3 --retry-delay 5 \
+         --user-agent "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36" \
+         "https://github.com/pearl-research-labs/pearl/archive/refs/heads/main.zip" \
+         -o pearl.zip && download_ok=1 && break
+    sleep 5
+done
+
+if [ "$download_ok" -ne 1 ]; then
+    echo "ERROR: Failed to download pearl.zip after 3 attempts."
+    exit 1
+fi
+
+if [ ! -s pearl.zip ]; then
+    echo "ERROR: pearl.zip is empty."
+    exit 1
+fi
+
+if ! file pearl.zip | grep -q 'Zip archive data'; then
+    echo "ERROR: pearl.zip is not a valid ZIP file."
+    echo "First bytes:"
+    head -c 200 pearl.zip | cat -v
+    exit 1
+fi
+
 unzip -q pearl.zip
+if [ ! -d "pearl-main" ]; then
+    echo "ERROR: Expected directory 'pearl-main' not found after unzip."
+    ls -la
+    exit 1
+fi
+
 mv pearl-main pearl
 cd pearl/miner/pearl-gemm
 
