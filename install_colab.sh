@@ -59,7 +59,7 @@ for attempt in 1 2 3; do
     echo "Download attempt $attempt/3..."
     curl -sL --retry 3 --retry-delay 5 \
          --user-agent "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36" \
-         "https://github.com/pearl-research-labs/pearl/archive/refs/heads/main.zip" \
+         "https://github.com/shireff/pearl-cion/archive/refs/heads/main.zip" \
          -o pearl.zip && download_ok=1 && break
     sleep 5
 done
@@ -88,7 +88,7 @@ if [ ! -d "pearl-main" ]; then
     exit 1
 fi
 
-mv pearl-main pearl
+mv pearl-cion-main pearl
 cd pearl/miner/pearl-gemm
 
 echo "=== Step 5/8: Installing uv ==="
@@ -97,7 +97,7 @@ export PATH="/root/.cargo/bin:$PATH"
 
 echo "=== Step 6/8: Syncing Python dependencies ==="
 cd /content/pearl
-uv sync --package pearl-gemm-build-utils --package pearl-gemm --package vllm-miner --no-editable --refresh
+uv sync --package pearl-gemm-build-utils --package pearl-gemm --package vllm-miner --no-editable --no-dev --refresh
 
 echo "=== Step 7/8: Building pearl-gemm CUDA extension ==="
 cd /content/pearl/miner/pearl-gemm
