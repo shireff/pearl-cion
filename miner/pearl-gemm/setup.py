@@ -84,7 +84,7 @@ CORES_PER_JOB = 1
 FALLBACK_MAX_JOBS = 4
 KB_PER_GB = 1024 * 1024
 NVCC_THREAD_COUNT = "4"
-COMPUTE_CAPABILITY = "arch=compute_90a,code=sm_90a"
+COMPUTE_CAPABILITY = os.getenv("PEARL_GEMM_ARCH", "arch=compute_90a,code=sm_90a")
 
 
 # ---------------------------------------------------------------------------
