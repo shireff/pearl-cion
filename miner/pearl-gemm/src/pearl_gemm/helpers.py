@@ -5,7 +5,7 @@ from threading import Lock, Semaphore
 import torch
 from blake3 import blake3
 from loguru import logger
-from pearl_gemm_cuda import HostSignalHeader, get_host_signal_header_size
+from .pearl_gemm_cuda import HostSignalHeader, get_host_signal_header_size
 
 SIZE_U32 = 4
 BLAKE3_DIGEST_SIZE_U32 = blake3.digest_size // SIZE_U32

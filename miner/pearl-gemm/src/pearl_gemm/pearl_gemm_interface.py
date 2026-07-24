@@ -1,4 +1,4 @@
-import pearl_gemm_cuda
+from . import pearl_gemm_cuda
 import torch
 
 BLAKE3_DIGEST_SIZE_U32 = 8

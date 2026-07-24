@@ -1,6 +1,6 @@
-import pearl_gemm_cuda
+from . import pearl_gemm_cuda
 import torch
-from pearl_gemm_cuda import get_build_routing_data_scratchpad_bytes  # noqa: F401
+from .pearl_gemm_cuda import get_build_routing_data_scratchpad_bytes  # noqa: F401
 
 
 def build_routing_data(
