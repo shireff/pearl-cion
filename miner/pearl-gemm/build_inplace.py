@@ -1,16 +1,14 @@
 #!/usr/bin/env python3
-"""Build pearl_gemm_cuda in-place using subprocess."""
+"""Build pearl_gemm_cuda directly without relying on setup.py cmdclass."""
 
 from __future__ import annotations
 
 import os
 import sys
-import subprocess
 import tempfile
 import shutil
 
 ROOT_DIR = os.path.abspath(os.path.dirname(__file__))
-
 os.chdir(ROOT_DIR)
 
 _cuda_home = os.environ.get("CUDA_HOME", "/usr/local/cuda")
@@ -18,48 +16,68 @@ if os.path.isdir(_cuda_home) and _cuda_home not in os.environ.get("PATH", ""):
     os.environ["PATH"] = _cuda_home + os.pathsep + os.environ.get("PATH", "")
 os.environ.setdefault("CUDA_HOME", _cuda_home)
 
+sys.path.insert(0, ROOT_DIR)
+
+import setup as _setup
+
+_setup._apply_ninja_patch()
+_setup._init_submodules()
+
+extensions = _setup._build_ext_modules()
+if not extensions:
+    print("No extensions to build.")
+    sys.exit(0)
+
+from setuptools.dist import Distribution
+from torch.utils.cpp_extension import BuildExtension
+
+dist = Distribution({"ext_modules": extensions})
+cmd = BuildExtension(dist)
+cmd.inplace = 1
+cmd.ensure_finalized()
+
 tmpdir = tempfile.mkdtemp(prefix="pearl_build_")
 log_path = os.path.join(tmpdir, "build.log")
 
-env = os.environ.copy()
-env["TORCH_EXTENSION_LOG_LEVEL"] = "DEBUG"
+import io
+stderr_buffer = io.StringIO()
+old_stderr = sys.stderr
+sys.stderr = stderr_buffer
 
-proc = subprocess.run(
-    [sys.executable, "setup.py", "build_ext", "--inplace"],
-    env=env,
-    capture_output=True,
-    text=True,
-    cwd=ROOT_DIR,
-)
-
-combined_output = proc.stdout + "\n" + proc.stderr
-with open(log_path, "w", encoding="utf-8") as f:
-    f.write(combined_output)
-
-for line in combined_output.splitlines():
-    if ".cu:" in line or ".cuh:" in line or ".hpp:" in line:
-        print(f"ERROR_FILE_LINE: {line.strip()}")
-
-if proc.returncode != 0:
+try:
+    cmd.run()
+except Exception as exc:
+    import traceback
+    traceback_text = traceback.format_exc()
+    print(traceback_text)
+    captured = stderr_buffer.getvalue()
+    sys.stderr = old_stderr
+    for line in captured.splitlines() + traceback_text.splitlines():
+        if ".cu:" in line or ".cuh:" in line or ".hpp:" in line:
+            print(f"ERROR_FILE_LINE: {line.strip()}")
+    with open(log_path, "w", encoding="utf-8") as f:
+        f.write(captured + "\n" + traceback_text)
     print("BUILD FAILED")
     shutil.rmtree(tmpdir, ignore_errors=True)
     sys.exit(1)
+finally:
+    sys.stderr = old_stderr
 
-print("BUILD COMPLETE")
-print("=== BUILD OUTPUT ===")
-print(combined_output)
-print("====================")
+captured = stderr_buffer.getvalue()
+with open(log_path, "w", encoding="utf-8") as f:
+    f.write(captured)
+
+for line in captured.splitlines():
+    if ".cu:" in line or ".cuh:" in line or ".hpp:" in line:
+        print(f"ERROR_FILE_LINE: {line.strip()}")
 
 _src_dir = os.path.join(ROOT_DIR, "src", "pearl_gemm")
 _dest_path = os.path.join(_src_dir, "pearl_gemm_cuda.so")
 
-_search_roots = [ROOT_DIR]
-for build_dir in [os.path.join(ROOT_DIR, "build")]:
-    if os.path.isdir(build_dir):
-        _search_roots.append(build_dir)
-
 _found = None
-for search_root in _search_roots:
+for search_root in [ROOT_DIR, os.path.join(ROOT_DIR, "build")]:
+    if not os.path.isdir(search_root):
+        continue
     for dirpath, _dirnames, filenames in os.walk(search_root):
         for f in filenames:
             if f.startswith("pearl_gemm_cuda") and (
@@ -79,5 +97,11 @@ if _found:
     print(f"COPIED: {_found} -> {_dest_path}")
 else:
     print("SEARCH: pearl_gemm_cuda.so not found in any search root")
+    print("=== STDOUT/STDERR ===")
+    print(captured)
+
+print("BUILD COMPLETE")
+for ext in extensions:
+    print(f"Extension: {ext.name}")
 
 shutil.rmtree(tmpdir, ignore_errors=True)
