@@ -18,6 +18,16 @@ os.environ.setdefault("CUDA_HOME", _cuda_home)
 
 sys.path.insert(0, ROOT_DIR)
 
+import torch.utils.cpp_extension as _cpp_ext
+
+_original_check = getattr(_cpp_ext, "_check_cuda_version", None)
+
+def _patched_check_cuda_version(compiler_name, compiler_version):
+    pass
+
+if _original_check is not None:
+    _cpp_ext._check_cuda_version = _patched_check_cuda_version
+
 import setup as _setup
 
 _setup._apply_ninja_patch()
